@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Meeting-Kostenrechner</title>
+<meta name="description" content="Was kostet dieses Meeting? Live-Zähler in CHF.">
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --surface-2: #eef0f4;
+    --border: #e0e3e9;
+    --text: #111418;
+    --muted: #5b6472;
+    --accent: #2453e6;
+    --accent-text: #ffffff;
+    --accent-soft: rgba(36, 83, 230, .10);
+    --ok: #12805c;
+    --pause: #b7791f;
+    --warn: #c4320a;
+    --warn-soft: rgba(196, 50, 10, .10);
+    --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 8px 24px rgba(16, 24, 40, .06);
+    --radius: 18px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c0e11;
+      --surface: #15191f;
+      --surface-2: #1d232b;
+      --border: #2a313b;
+      --text: #f2f4f7;
+      --muted: #9aa4b2;
+      --accent: #6e8fff;
+      --accent-text: #0c0e11;
+      --accent-soft: rgba(110, 143, 255, .14);
+      --ok: #3ccf91;
+      --pause: #f5b546;
+      --warn: #ff7a45;
+      --warn-soft: rgba(255, 122, 69, .14);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c0e11;
+    --surface: #15191f;
+    --surface-2: #1d232b;
+    --border: #2a313b;
+    --text: #f2f4f7;
+    --muted: #9aa4b2;
+    --accent: #6e8fff;
+    --accent-text: #0c0e11;
+    --accent-soft: rgba(110, 143, 255, .14);
+    --ok: #3ccf91;
+    --pause: #f5b546;
+    --warn: #ff7a45;
+    --warn-soft: rgba(255, 122, 69, .14);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.45;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  button, input { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+
+  /* ---------- Kopfzeile ---------- */
+  .top {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 20px 16px 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; letter-spacing: -.01em; }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: var(--accent); color: var(--accent-text);
+    display: grid; place-items: center; font-size: .8rem; font-weight: 800;
+  }
+  .top-actions { display: flex; gap: 8px; }
+
+  /* ---------- Layout ---------- */
+  .layout {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 12px 16px 32px;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @media (min-width: 980px) {
+    .layout { grid-template-columns: minmax(0, 1.65fr) minmax(340px, 1fr); align-items: start; }
+    .hero { position: sticky; top: 16px; }
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 20px;
+  }
+  .settings { display: grid; gap: 16px; }
+  h2 { font-size: 1rem; margin: 0 0 14px; letter-spacing: -.01em; }
+
+  /* ---------- Live-Anzeige ---------- */
+  .hero {
+    container-type: inline-size;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 24px 20px 20px;
+  }
+  .status {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: .85rem; font-weight: 600; color: var(--muted);
+    background: var(--surface-2); border-radius: 999px; padding: 5px 12px 5px 10px;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  body.running .dot { background: var(--ok); animation: pulse 1.6s ease-in-out infinite; }
+  body.paused .dot { background: var(--pause); }
+  body.over.running .dot { background: var(--warn); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+  .amount { margin: 14px 0 6px; display: flex; flex-direction: column; align-items: center; }
+  .cur { font-size: clamp(.9rem, 3.2cqi, 1.6rem); font-weight: 700; color: var(--muted); letter-spacing: .08em; }
+  .total {
+    font-size: clamp(2.8rem, 18cqi, 9rem);
+    font-weight: 750;
+    line-height: 1;
+    letter-spacing: -.03em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    transition: color .3s;
+  }
+  body.over .total { color: var(--warn); }
+
+  .stats {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .stat { background: var(--surface-2); border-radius: 12px; padding: 10px 8px; min-width: 0; }
+  .label { display: block; font-size: .75rem; color: var(--muted); font-weight: 600; letter-spacing: .01em; }
+  .stat .value {
+    display: block; font-size: clamp(1rem, 4.2cqi, 1.6rem); font-weight: 700;
+    font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  @container (max-width: 460px) {
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stat:last-child { grid-column: 1 / -1; }
+    .stat .value { font-size: 1.25rem; }
+  }
+  @media (max-width: 480px) { .btn-text { display: none; } #presentBtn { width: 44px; padding: 0; } }
+
+  .progress-wrap { width: 100%; margin-top: 16px; }
+  .progress { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+  .bar { height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width .25s linear, background .3s; }
+  body.over .bar { background: var(--warn); }
+  .progress-label {
+    display: flex; justify-content: space-between; gap: 8px; margin-top: 6px;
+    font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  body.over #remaining { color: var(--warn); font-weight: 700; }
+
+  .quote {
+    min-height: 3.6em;
+    margin: 18px 0 4px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  }
+  .quote-text { font-size: clamp(1.05rem, 3.6cqi, 1.7rem); font-weight: 650; letter-spacing: -.01em; }
+  .quote-badge {
+    font-size: .72rem; font-weight: 700; color: var(--warn); background: var(--warn-soft);
+    border-radius: 999px; padding: 2px 10px; letter-spacing: .02em;
+  }
+  .quote.pop { animation: pop .5s cubic-bezier(.2, .9, .3, 1.4); }
+  @keyframes pop { 0% { transform: scale(.85); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+  .controls { display: flex; gap: 10px; width: 100%; justify-content: center; margin-top: 10px; }
+  .hint { margin: 14px 0 0; font-size: .78rem; color: var(--muted); }
+  @media (hover: none) { .hint { display: none; } }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    min-height: 44px; padding: 0 16px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--surface-2);
+    font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    transition: transform .08s, background .2s, border-color .2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:hover { border-color: var(--muted); }
+  .btn:active { transform: scale(.97); }
+  .btn:focus-visible, input:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 1px; border-color: var(--accent); }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+  .btn-lg { min-height: 56px; font-size: 1.1rem; flex: 1 1 0; max-width: 240px; border-radius: 14px; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .btn-primary:hover { border-color: var(--accent); filter: brightness(1.06); }
+  body.running .btn-primary { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+  .btn-icon { width: 44px; padding: 0; }
+  .btn-ghost { background: transparent; border-style: dashed; width: 100%; color: var(--muted); }
+  .btn-ghost:hover { color: var(--text); }
+
+  /* ---------- Teilnehmende ---------- */
+  .groups { display: grid; gap: 10px; margin-bottom: 12px; }
+  .group {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 4.6rem 6.2rem 44px;
+    gap: 8px;
+    align-items: end;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .field span { font-size: .72rem; font-weight: 600; color: var(--muted); }
+  input[type="text"], input[type="number"] {
+    width: 100%; min-height: 44px; padding: 0 12px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="number"] { -moz-appearance: textfield; text-align: right; }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .del { color: var(--muted); }
+  .del:hover:not(:disabled) { color: var(--warn); border-color: var(--warn); }
+  .del:disabled { opacity: .35; cursor: not-allowed; }
+  @media (max-width: 440px) {
+    .group { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+    .group:last-child { border-bottom: 0; padding-bottom: 0; }
+    .group .name { grid-column: 1 / -1; }
+  }
+  .summary {
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+    font-size: .9rem; color: var(--muted);
+  }
+  .summary strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  /* ---------- Dauer ---------- */
+  .duration { display: flex; align-items: center; gap: 10px; }
+  .duration input { max-width: 7.5rem; font-size: 1.15rem; font-weight: 700; }
+  .duration span { color: var(--muted); font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .chip {
+    min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border);
+    background: transparent; cursor: pointer; font-size: .85rem; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .chip:hover { border-color: var(--muted); }
+  .chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .expected { margin-top: 16px; padding: 16px; border-radius: 14px; background: var(--accent-soft); }
+  .expected .big { display: block; font-size: 2rem; font-weight: 750; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin: 2px 0; }
+  .expected .sub { font-size: .85rem; color: var(--muted); }
+
+  /* ---------- Beamer-Modus ---------- */
+  .exit-present { position: fixed; top: 16px; right: 16px; z-index: 10; display: none; opacity: .55; }
+  .exit-present:hover { opacity: 1; }
+  body.present .exit-present { display: inline-flex; }
+  body.present .top, body.present .settings, body.present .hint { display: none; }
+  body.present .layout { max-width: none; min-height: 100vh; min-height: 100dvh; padding: 4vh 5vw; grid-template-columns: minmax(0, 1fr); align-items: center; }
+  body.present .hero { position: static; background: transparent; border: 0; box-shadow: none; padding: 0; justify-content: center; }
+  body.present .status { font-size: clamp(.9rem, 1.6cqi, 1.4rem); }
+  body.present .cur { font-size: clamp(1.2rem, 3cqi, 3rem); }
+  body.present .total { font-size: min(17cqi, 34vh); }
+  body.present .stats { max-width: 1400px; gap: 1.5cqi; margin-top: 3vh; }
+  body.present .stat { padding: 1.4cqi 1cqi; border-radius: 1.4cqi; }
+  body.present .label { font-size: clamp(.8rem, 1.5cqi, 1.5rem); }
+  body.present .stat .value { font-size: clamp(1.2rem, 3.6cqi, 4rem); }
+  body.present .progress-wrap { max-width: 1400px; margin-top: 3vh; }
+  body.present .progress { height: clamp(8px, 1cqi, 18px); }
+  body.present .progress-label { font-size: clamp(.8rem, 1.4cqi, 1.4rem); }
+  body.present .quote-text { font-size: clamp(1.4rem, 3.4cqi, 4rem); }
+  body.present .quote-badge { font-size: clamp(.75rem, 1.2cqi, 1.2rem); }
+  body.present .controls { margin-top: 2vh; }
+  body.present .btn-lg { opacity: .8; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body class="ready">
+
+<header class="top">
+  <div class="brand"><span class="brand-mark" aria-hidden="true">CHF</span>Meeting-Kostenrechner</div>
+  <div class="top-actions">
+    <button class="btn btn-icon" id="themeBtn" type="button" aria-label="Hell/Dunkel umschalten" title="Hell/Dunkel umschalten">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+    </button>
+    <button class="btn" id="presentBtn" type="button" title="Vollbild für Beamer (Taste B)" aria-label="Beamer-Modus">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+      <span class="btn-text">Beamer-Modus</span>
+    </button>
+  </div>
+</header>
+
+<button class="btn exit-present" id="exitPresent" type="button">Beamer-Modus beenden</button>
+
+<main class="layout">
+  <section class="card hero" aria-label="Live-Kosten">
+    <div class="status"><span class="dot" aria-hidden="true"></span><span id="statusText">Bereit</span></div>
+
+    <div class="amount">
+      <span class="cur">CHF</span>
+      <span class="total" id="total">0.00</span>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="label">Verstrichene Zeit</span><span class="value" id="elapsed">00:00:00</span></div>
+      <div class="stat"><span class="label">Kosten pro Minute</span><span class="value" id="perMin">CHF 0.00</span></div>
+      <div class="stat"><span class="label" id="plannedLabel">Erwartet</span><span class="value" id="plannedCost">CHF 0.00</span></div>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress" role="progressbar" aria-label="Anteil der geplanten Zeit" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress">
+        <div class="bar" id="bar"></div>
+      </div>
+      <div class="progress-label"><span id="progressText">0 % der geplanten Zeit</span><span id="remaining"></span></div>
+    </div>
+
+    <div class="quote" id="quote" aria-live="polite"></div>
+
+    <div class="controls">
+      <button class="btn btn-lg btn-primary" id="startBtn" type="button">
+        <svg id="startIcon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z"/></svg>
+        <span id="startLabel">Start</span>
+      </button>
+      <button class="btn btn-lg" id="resetBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+        Zurücksetzen
+      </button>
+    </div>
+    <p class="hint">Tastatur: Leertaste = Start/Pause · R = Zurücksetzen · B = Beamer-Modus</p>
+  </section>
+
+  <aside class="settings">
+    <section class="card" aria-labelledby="hPeople">
+      <h2 id="hPeople">Teilnehmende</h2>
+      <div class="groups" id="groups"></div>
+      <button class="btn btn-ghost" id="addGroup" type="button">+ Gruppe hinzufügen</button>
+      <div class="summary">
+        <span><strong id="sumPeople">0</strong> Personen</span>
+        <span><strong id="sumHour">CHF 0.00</strong> pro Stunde</span>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="hDuration">
+      <h2 id="hDuration">Geplante Dauer</h2>
+      <label class="duration">
+        <input type="number" id="planned" min="0" step="5" inputmode="numeric" aria-label="Geplante Dauer in Minuten">
+        <span>Minuten</span>
+      </label>
+      <div class="chips" id="chips">
+        <button class="chip" type="button" data-min="15">15</button>
+        <button class="chip" type="button" data-min="30">30</button>
+        <button class="chip" type="button" data-min="45">45</button>
+        <button class="chip" type="button" data-min="60">60</button>
+        <button class="chip" type="button" data-min="90">90</button>
+        <button class="chip" type="button" data-min="120">120</button>
+      </div>
+      <div class="expected">
+        <span class="label">Erwartete Kosten</span>
+        <span class="big" id="expected">CHF 0.00</span>
+        <span class="sub" id="expectedSub"></span>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const STORE_KEY = 'meeting-kostenrechner.v1';
+  const TICK_MS = 250;
+
+  const THRESHOLDS = [
+    { at: 50,    text: 'Der Kaffee für alle ist bezahlt.' },
+    { at: 100,   text: 'Dafür gäbe es ein feines Mittagessen.' },
+    { at: 250,   text: 'Gibt es eigentlich eine Agenda?' },
+    { at: 500,   text: 'Das hätte auch eine Mail sein können.' },
+    { at: 1000,  text: 'Vierstellig. Zeit für einen Entscheid.' },
+    { at: 2000,  text: 'Dafür gäbe es ein neues Notebook.' },
+    { at: 5000,  text: 'Dieses Meeting ist jetzt offiziell ein Projekt.' },
+    { at: 10000, text: 'Vielleicht kurz das Controlling einladen?' }
+  ];
+
+  const DEFAULT_CFG = {
+    groups: [
+      { name: 'Entwickler', count: 3, rate: 90 },
+      { name: 'Manager', count: 1, rate: 130 }
+    ],
+    planned: 60
+  };
+
+  // ---------- Formatierung (de-CH: 1’234.50) ----------
+  const fmtMoney = new Intl.NumberFormat('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtInt = new Intl.NumberFormat('de-CH', { maximumFractionDigits: 1 });
+  const chf = v => 'CHF ' + fmtMoney.format(v);
+  const pad = n => String(n).padStart(2, '0');
+  function fmtHMS(ms) {
+    const s = Math.floor(ms / 1000);
+    return pad(Math.floor(s / 3600)) + ':' + pad(Math.floor(s / 60) % 60) + ':' + pad(s % 60);
+  }
+  function fmtClock(ms, roundUp) {
+    const s = roundUp ? Math.ceil(ms / 1000) : Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
+    return h > 0 ? h + ':' + pad(m) + ':' + pad(sec) : pad(m) + ':' + pad(sec);
+  }
+  function fmtDuration(min) {
+    if (min < 60) return fmtInt.format(min) + ' Minuten';
+    const h = Math.floor(min / 60), m = Math.round(min % 60);
+    return h + ' Std.' + (m ? ' ' + m + ' Min.' : '');
+  }
+  function num(v) {
+    const n = parseFloat(String(v ?? '').replace(',', '.'));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  // ---------- Zustand ----------
+  let cfg = structuredClone(DEFAULT_CFG);
+  let timer = { running: false, ms: 0, cost: 0, last: 0 };
+  let reached = -1;
+  let interval = null;
+  let wakeLock = null;
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data.cfg && Array.isArray(data.cfg.groups) && data.cfg.groups.length) {
+        cfg.groups = data.cfg.groups.map(g => ({
+          name: String(g.name ?? ''), count: g.count ?? '', rate: g.rate ?? ''
+        }));
+        cfg.planned = data.cfg.planned ?? DEFAULT_CFG.planned;
+      }
+      if (data.timer && Number.isFinite(data.timer.ms) && Number.isFinite(data.timer.cost)) {
+        timer = { running: !!data.timer.running, ms: data.timer.ms, cost: data.timer.cost, last: data.timer.last || 0 };
+        // Nach einem Neuladen weiterlaufen – ausser die Seite war sehr lange zu.
+        if (timer.running && (Date.now() - timer.last > 12 * 3600 * 1000 || timer.last > Date.now())) {
+          timer.running = false;
+        }
+      }
+      if (data.theme === 'light' || data.theme === 'dark') document.documentElement.dataset.theme = data.theme;
+    } catch (e) { /* Speicher nicht verfügbar – mit Standardwerten weiter */ }
+  }
+  function save() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        cfg, timer, theme: document.documentElement.dataset.theme || null
+      }));
+    } catch (e) { /* ignorieren */ }
+  }
+
+  const hourly = () => cfg.groups.reduce((s, g) => s + num(g.count) * num(g.rate), 0);
+  const people = () => cfg.groups.reduce((s, g) => s + num(g.count), 0);
+
+  // ---------- DOM ----------
+  const $ = id => document.getElementById(id);
+  const els = {
+    total: $('total'), elapsed: $('elapsed'), perMin: $('perMin'), plannedCost: $('plannedCost'),
+    plannedLabel: $('plannedLabel'), progressWrap: $('progressWrap'), progress: $('progress'), bar: $('bar'),
+    progressText: $('progressText'), remaining: $('remaining'), quote: $('quote'), statusText: $('statusText'),
+    startBtn: $('startBtn'), startLabel: $('startLabel'), startIcon: $('startIcon'), resetBtn: $('resetBtn'),
+    groups: $('groups'), addGroup: $('addGroup'), sumPeople: $('sumPeople'), sumHour: $('sumHour'),
+    planned: $('planned'), chips: $('chips'), expected: $('expected'), expectedSub: $('expectedSub'),
+    themeBtn: $('themeBtn'), presentBtn: $('presentBtn'), exitPresent: $('exitPresent')
+  };
+
+  const ICON_PLAY = '<path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z"/>';
+  const ICON_PAUSE = '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>';
+
+  function renderGroups() {
+    els.groups.innerHTML = '';
+    cfg.groups.forEach((g, i) => {
+      const row = document.createElement('div');
+      row.className = 'group';
+      row.dataset.index = i;
+      row.innerHTML = `
+        <label class="field name"><span>Rolle</span>
+          <input type="text" data-field="name" placeholder="z.B. Entwicklerin" maxlength="40"></label>
+        <label class="field"><span>Anzahl</span>
+          <input type="number" data-field="count" min="0" step="1" inputmode="numeric"></label>
+        <label class="field"><span>CHF / Std.</span>
+          <input type="number" data-field="rate" min="0" step="5" inputmode="decimal"></label>
+        <button class="btn btn-icon del" type="button" aria-label="Gruppe entfernen" title="Gruppe entfernen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>`;
+      row.querySelector('[data-field="name"]').value = g.name;
+      row.querySelector('[data-field="count"]').value = g.count;
+      row.querySelector('[data-field="rate"]').value = g.rate;
+      row.querySelector('.del').disabled = cfg.groups.length <= 1;
+      els.groups.appendChild(row);
+    });
+  }
+
+  function renderStatic() {
+    const h = hourly(), p = people(), planned = num(cfg.planned);
+    els.sumPeople.textContent = fmtInt.format(p);
+    els.sumHour.textContent = chf(h);
+    els.perMin.textContent = chf(h / 60);
+    const expected = h * planned / 60;
+    els.expected.textContent = chf(expected);
+    els.expectedSub.textContent = planned
+      ? `${fmtInt.format(p)} ${p === 1 ? 'Person' : 'Personen'} während ${fmtDuration(planned)}`
+      : 'Bitte eine Dauer eingeben.';
+    els.plannedCost.textContent = planned ? chf(expected) : '–';
+    els.plannedLabel.textContent = planned ? `Erwartet (${fmtInt.format(planned)} Min.)` : 'Erwartet';
+    els.chips.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', Number(c.dataset.min) === planned));
+    renderLive();
+  }
+
+  function renderLive() {
+    els.total.textContent = fmtMoney.format(timer.cost);
+    els.elapsed.textContent = fmtHMS(timer.ms);
+
+    const plannedMs = num(cfg.planned) * 60000;
+    const over = plannedMs > 0 && timer.ms > plannedMs;
+    els.progressWrap.hidden = plannedMs === 0;
+    if (plannedMs) {
+      const pct = timer.ms / plannedMs * 100;
+      els.bar.style.width = Math.min(100, pct) + '%';
+      els.progress.setAttribute('aria-valuenow', String(Math.min(100, Math.floor(pct))));
+      els.progressText.textContent = `${Math.floor(pct)} % der geplanten Zeit`;
+      els.remaining.textContent = over
+        ? `+${fmtClock(timer.ms - plannedMs)} überzogen`
+        : `noch ${fmtClock(plannedMs - timer.ms, true)}`;
+    }
+
+    const state = timer.running ? 'running' : (timer.ms > 0 ? 'paused' : 'ready');
+    document.body.classList.toggle('running', state === 'running');
+    document.body.classList.toggle('paused', state === 'paused');
+    document.body.classList.toggle('ready', state === 'ready');
+    document.body.classList.toggle('over', over);
+
+    els.statusText.textContent = state === 'running' ? (over ? 'Läuft – Zeit überschritten' : 'Läuft')
+      : state === 'paused' ? 'Pausiert' : 'Bereit';
+    els.startLabel.textContent = state === 'running' ? 'Pause' : state === 'paused' ? 'Weiter' : 'Start';
+    els.startIcon.innerHTML = state === 'running' ? ICON_PAUSE : ICON_PLAY;
+
+    document.title = state === 'ready' ? 'Meeting-Kostenrechner' : `${chf(timer.cost)} · Meeting`;
+  }
+
+  function currentThreshold() {
+    let idx = -1;
+    THRESHOLDS.forEach((t, i) => { if (timer.cost >= t.at) idx = i; });
+    return idx;
+  }
+  function renderQuote(animate) {
+    const idx = currentThreshold();
+    if (idx === reached) return;
+    reached = idx;
+    els.quote.innerHTML = '';
+    els.quote.classList.remove('pop');
+    if (idx < 0) return;
+    const badge = document.createElement('span');
+    badge.className = 'quote-badge';
+    badge.textContent = 'ab ' + chf(THRESHOLDS[idx].at).replace('.00', '');
+    const text = document.createElement('span');
+    text.className = 'quote-text';
+    text.textContent = '«' + THRESHOLDS[idx].text + '»';
+    els.quote.append(badge, text);
+    if (animate) { void els.quote.offsetWidth; els.quote.classList.add('pop'); }
+  }
+
+  // ---------- Timer ----------
+  function tick() {
+    if (!timer.running) return;
+    const now = Date.now();
+    const dt = Math.max(0, now - timer.last);
+    timer.last = now;
+    timer.ms += dt;
+    // Kosten werden laufend aufsummiert: Wer während des Meetings dazukommt, zählt ab dann.
+    timer.cost += hourly() * dt / 3600000;
+    renderLive();
+    renderQuote(true);
+    save();
+  }
+  function start() {
+    if (timer.running) return;
+    timer.running = true;
+    timer.last = Date.now();
+    clearInterval(interval);
+    interval = setInterval(tick, TICK_MS);
+    lockScreen();
+    renderLive();
+    save();
+  }
+  function pause() {
+    if (!timer.running) return;
+    tick();
+    timer.running = false;
+    clearInterval(interval);
+    interval = null;
+    unlockScreen();
+    renderLive();
+    save();
+  }
+  function toggle() { timer.running ? pause() : start(); }
+  function reset() {
+    if (timer.ms > 0 && !confirm('Zähler wirklich zurücksetzen?')) return;
+    clearInterval(interval);
+    interval = null;
+    timer = { running: false, ms: 0, cost: 0, last: 0 };
+    unlockScreen();
+    renderLive();
+    renderQuote(false);
+    save();
+  }
+
+  // Bildschirm während des Meetings wach halten (wo unterstützt)
+  async function lockScreen() {
+    try {
+      if ('wakeLock' in navigator && !wakeLock && document.visibilityState === 'visible') {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      }
+    } catch (e) { wakeLock = null; }
+  }
+  function unlockScreen() {
+    try { if (wakeLock) wakeLock.release(); } catch (e) { /* ignorieren */ }
+    wakeLock = null;
+  }
+
+  // ---------- Beamer-Modus & Farbschema ----------
+  function setPresent(on) {
+    document.body.classList.toggle('present', on);
+    const el = document.documentElement;
+    if (on && el.requestFullscreen && !document.fullscreenElement) {
+      el.requestFullscreen().catch(() => {});
+    } else if (!on && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+  function toggleTheme() {
+    const root = document.documentElement;
+    const dark = root.dataset.theme
+      ? root.dataset.theme === 'dark'
+      : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+    save();
+  }
+
+  // ---------- Events ----------
+  els.groups.addEventListener('input', e => {
+    const input = e.target.closest('input[data-field]');
+    if (!input) return;
+    const i = Number(input.closest('.group').dataset.index);
+    cfg.groups[i][input.dataset.field] = input.value;
+    renderStatic();
+    save();
+  });
+  els.groups.addEventListener('click', e => {
+    const del = e.target.closest('.del');
+    if (!del || cfg.groups.length <= 1) return;
+    cfg.groups.splice(Number(del.closest('.group').dataset.index), 1);
+    renderGroups();
+    renderStatic();
+    save();
+  });
+  els.addGroup.addEventListener('click', () => {
+    cfg.groups.push({ name: '', count: 1, rate: 100 });
+    renderGroups();
+    renderStatic();
+    save();
+    els.groups.lastElementChild.querySelector('input').focus();
+  });
+  els.planned.addEventListener('input', () => { cfg.planned = els.planned.value; renderStatic(); save(); });
+  els.chips.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    cfg.planned = Number(chip.dataset.min);
+    els.planned.value = cfg.planned;
+    renderStatic();
+    save();
+  });
+  els.startBtn.addEventListener('click', toggle);
+  els.resetBtn.addEventListener('click', reset);
+  els.themeBtn.addEventListener('click', toggleTheme);
+  els.presentBtn.addEventListener('click', () => setPresent(true));
+  els.exitPresent.addEventListener('click', () => setPresent(false));
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) document.body.classList.remove('present');
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && timer.running) { tick(); lockScreen(); }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest('input, textarea, select, button, [contenteditable]') && e.key !== 'Escape') return;
+    if (e.code === 'Space') { e.preventDefault(); toggle(); }
+    else if (e.key === 'r' || e.key === 'R') reset();
+    else if (e.key === 'b' || e.key === 'B') setPresent(!document.body.classList.contains('present'));
+    else if (e.key === 'Escape' && document.body.classList.contains('present')) setPresent(false);
+  });
+
+  // ---------- Start ----------
+  load();
+  els.planned.value = cfg.planned;
+  renderGroups();
+  renderStatic();
+  renderQuote(false);
+  if (timer.running) {
+    interval = setInterval(tick, TICK_MS);
+    tick();
+    lockScreen();
+  }
+})();
+</script>
+</body>
+</html>
